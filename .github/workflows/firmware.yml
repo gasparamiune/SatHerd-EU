@@ -1,0 +1,31 @@
+name: Firmware CI
+
+on:
+  push:
+    paths:
+      - 'firmware/collar-node/**'
+      - '.github/workflows/firmware.yml'
+  pull_request:
+    paths:
+      - 'firmware/collar-node/**'
+      - '.github/workflows/firmware.yml'
+
+jobs:
+  build-collar-node:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build firmware/collar-node
+        working-directory: firmware/collar-node
+        run: pio run
