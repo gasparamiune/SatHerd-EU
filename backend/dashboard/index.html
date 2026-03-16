@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SatHerd-EU · Dashboard</title>
+
+  <!-- Leaflet map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3a;
+      --accent:    #4f8ef7;
+      --accent2:   #34c9a0;
+      --warn:      #f4a928;
+      --danger:    #e05050;
+      --text:      #e2e4ef;
+      --muted:     #6b7080;
+      --radius:    10px;
+      --header-h:  56px;
+    }
+
+    html, body { height: 100%; font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+    /* ── Layout ── */
+    .layout { display: grid; grid-template-rows: var(--header-h) 1fr; height: 100%; }
+
+    header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 0 20px; background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: relative; z-index: 10;
+    }
+    header svg { flex-shrink: 0; }
+    header .title { font-size: 16px; font-weight: 700; letter-spacing: .3px; }
+    header .subtitle { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    header .spacer { flex: 1; }
+    header .live-badge {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--accent2); font-weight: 600;
+    }
+    header .live-badge .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent2); animation: pulse 2s infinite;
+    }
+    header .last-updated { font-size: 11px; color: var(--muted); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .35; }
+    }
+
+    .main { display: grid; grid-template-columns: 320px 1fr; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .sidebar-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .sidebar-header h2 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+    .badge-count { background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 20px; }
+
+    .collar-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .collar-list::-webkit-scrollbar { width: 4px; }
+    .collar-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .collar-card {
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px 14px; cursor: pointer; transition: border-color .15s, background .15s;
+    }
+    .collar-card:hover { border-color: var(--accent); }
+    .collar-card.active { border-color: var(--accent); background: #1c2540; }
+
+    .collar-card .row { display: flex; align-items: center; gap: 8px; }
+    .collar-card .animal-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+    }
+    .collar-card .name { font-weight: 600; font-size: 13px; }
+    .collar-card .device-id { font-size: 10px; color: var(--muted); font-family: monospace; }
+    .collar-card .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-left: auto;
+    }
+    .status-ok   { background: var(--accent2); }
+    .status-warn { background: var(--warn); }
+    .status-off  { background: var(--muted); }
+
+    .collar-card .metrics { display: flex; gap: 10px; margin-top: 10px; }
+    .collar-card .metric { flex: 1; }
+    .collar-card .metric .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .collar-card .metric .value { font-size: 13px; font-weight: 600; margin-top: 2px; }
+
+    .battery-bar { height: 3px; background: var(--border); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+    .battery-bar .fill { height: 100%; border-radius: 3px; transition: width .4s; }
+    .fill-ok   { background: var(--accent2); }
+    .fill-warn { background: var(--warn); }
+    .fill-low  { background: var(--danger); }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      padding: 10px 16px; border-top: 1px solid var(--border);
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    }
+    .stat { text-align: center; }
+    .stat .sv { font-size: 18px; font-weight: 700; }
+    .stat .sl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-top: 1px; }
+
+    /* ── Map ── */
+    .map-wrapper { position: relative; display: flex; flex-direction: column; }
+    #map { flex: 1; }
+
+    /* ── Info panel (bottom of map) ── */
+    .info-panel {
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 14px 18px; display: none;
+    }
+    .info-panel.visible { display: block; }
+    .info-panel h3 { font-size: 13px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+    .info-panel .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+    .info-panel .field .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .info-panel .field .val { font-size: 13px; font-weight: 600; margin-top: 2px; font-family: monospace; }
+
+    /* Leaflet dark override */
+    .leaflet-container { background: #0f1117; }
+    .leaflet-popup-content-wrapper { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 24px rgba(0,0,0,.5); }
+    .leaflet-popup-tip { background: var(--surface); }
+    .leaflet-popup-content { font-size: 13px; line-height: 1.6; }
+    .leaflet-popup-content b { color: var(--accent); }
+    .leaflet-tile { filter: brightness(.7) saturate(.5); }
+
+    /* Collar marker */
+    .collar-marker {
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 2.5px solid var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; background: var(--surface);
+      box-shadow: 0 0 0 4px rgba(79,142,247,.2);
+    }
+    .collar-marker.warn  { border-color: var(--warn);   box-shadow: 0 0 0 4px rgba(244,169,40,.2); }
+    .collar-marker.stale { border-color: var(--muted);  box-shadow: none; opacity: .7; }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- ── Header ── -->
+  <header>
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+      <circle cx="14" cy="14" r="13" stroke="#4f8ef7" stroke-width="1.5"/>
+      <path d="M14 4 L14 7 M14 21 L14 24 M4 14 L7 14 M21 14 L24 14" stroke="#4f8ef7" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="14" cy="14" r="4" fill="#4f8ef7" opacity=".9"/>
+      <path d="M14 14 L19 8" stroke="#34c9a0" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <div class="title">SatHerd-EU</div>
+      <div class="subtitle">Wildlife Collar Telemetry</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="live-badge"><div class="dot"></div>Live</div>
+    <div class="last-updated" id="lastUpdated">Updated just now</div>
+  </header>
+
+  <!-- ── Main ── -->
+  <div class="main">
+
+    <!-- ── Sidebar ── -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2>Collars</h2>
+        <span class="badge-count" id="collarCount">0</span>
+      </div>
+
+      <div class="collar-list" id="collarList"></div>
+
+      <div class="stats-bar">
+        <div class="stat"><div class="sv" id="statActive">0</div><div class="sl">Active</div></div>
+        <div class="stat"><div class="sv" id="statFix">0</div><div class="sl">GPS Fix</div></div>
+        <div class="stat"><div class="sv" id="statLowBat">0</div><div class="sl">Low Bat</div></div>
+      </div>
+    </div>
+
+    <!-- ── Map + info ── -->
+    <div class="map-wrapper">
+      <div id="map"></div>
+      <div class="info-panel" id="infoPanel">
+        <h3 id="infoPanelTitle"></h3>
+        <div class="grid" id="infoPanelGrid"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Simulated collar data ────────────────────────────────────────────────────
+// Replace with real WebSocket / REST API calls once the backend is live.
+
+const COLLARS = [
+  {
+    id: 0xDEADBEEF, name: "Ibex-01",     animal: "🦌",
+    lat: 45.8326,  lon:  6.8652,  altM: 2340,
+    battMv: 3820,  battPct: 78,   satellites: 9,  hdop: 1.1,
+    storageKb: 42, flags: 0x03, ts: Date.now() - 3 * 60_000,
+  },
+  {
+    id: 0xCAFEBABE, name: "Wolf-07",      animal: "🐺",
+    lat: 46.1512,  lon:  7.1024,  altM: 1890,
+    battMv: 3510,  battPct: 32,   satellites: 7,  hdop: 1.8,
+    storageKb: 115, flags: 0x01, ts: Date.now() - 18 * 60_000,
+  },
+  {
+    id: 0xBEEFCAFE, name: "Bear-03",      animal: "🐻",
+    lat: 45.9744,  lon:  6.9811,  altM: 1650,
+    battMv: 4050,  battPct: 91,   satellites: 11, hdop: 0.9,
+    storageKb: 8,  flags: 0x03, ts: Date.now() - 1 * 60_000,
+  },
+  {
+    id: 0x12345678, name: "Lynx-02",      animal: "🐱",
+    lat: 46.0230,  lon:  7.0440,  altM: 2105,
+    battMv: 3280,  battPct: 11,   satellites: 0,  hdop: 9.9,
+    storageKb: 201, flags: 0x00, ts: Date.now() - 95 * 60_000,
+  },
+  {
+    id: 0xABCD1234, name: "Chamois-05",   animal: "🦌",
+    lat: 45.8900,  lon:  7.0300,  altM: 2780,
+    battMv: 3760,  battPct: 63,   satellites: 8,  hdop: 1.4,
+    storageKb: 77, flags: 0x03, ts: Date.now() - 7 * 60_000,
+  },
+];
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function battClass(pct) {
+  if (pct > 40) return 'ok';
+  if (pct > 15) return 'warn';
+  return 'low';
+}
+
+function statusClass(collar) {
+  const ageMin = (Date.now() - collar.ts) / 60_000;
+  if (ageMin > 60) return 'off';
+  if (collar.battPct <= 15) return 'warn';
+  return 'ok';
+}
+
+function markerClass(collar) {
+  const ageMin = (Date.now() - collar.ts) / 60_000;
+  if (ageMin > 60) return 'stale';
+  if (collar.battPct <= 15) return 'warn';
+  return '';
+}
+
+function relTime(ts) {
+  const m = Math.round((Date.now() - ts) / 60_000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  return `${Math.round(m / 60)}h ago`;
+}
+
+function formatCoord(val, pos, neg) {
+  const d = Math.abs(val).toFixed(5);
+  return `${d}° ${val >= 0 ? pos : neg}`;
+}
+
+function hexId(id) {
+  return '0x' + (id >>> 0).toString(16).toUpperCase().padStart(8, '0');
+}
+
+// ── Map ─────────────────────────────────────────────────────────────────────
+
+const map = L.map('map', { zoomControl: true }).setView([45.96, 6.98], 10);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 18,
+}).addTo(map);
+
+const markerMap = {};
+
+function makeMarkerIcon(collar) {
+  const cls = markerClass(collar);
+  return L.divIcon({
+    className: '',
+    html: `<div class="collar-marker ${cls}">${collar.animal}</div>`,
+    iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -20],
+  });
+}
+
+function makePopup(c) {
+  const fix = (c.flags & 0x01) ? '✅ Valid' : '❌ None';
+  const radio = (c.flags & 0x02) ? '📡 Sent' : '—';
+  return `
+    <b>${c.animal} ${c.name}</b><br>
+    ID: <code>${hexId(c.id)}</code><br>
+    Lat: ${formatCoord(c.lat, 'N', 'S')}<br>
+    Lon: ${formatCoord(c.lon, 'E', 'W')}<br>
+    Alt: ${c.altM} m<br>
+    Battery: ${c.battPct}% (${c.battMv} mV)<br>
+    Satellites: ${c.satellites} (HDOP ${c.hdop.toFixed(1)})<br>
+    GNSS Fix: ${fix} · Radio: ${radio}<br>
+    Updated: ${relTime(c.ts)}
+  `;
+}
+
+COLLARS.forEach(c => {
+  const marker = L.marker([c.lat, c.lon], { icon: makeMarkerIcon(c) })
+    .addTo(map)
+    .bindPopup(makePopup(c));
+  marker.on('click', () => selectCollar(c.id));
+  markerMap[c.id] = marker;
+});
+
+// ── Sidebar ──────────────────────────────────────────────────────────────────
+
+let selectedId = null;
+
+function renderSidebar() {
+  const list = document.getElementById('collarList');
+  list.innerHTML = '';
+
+  let active = 0, fixCount = 0, lowBat = 0;
+
+  COLLARS.forEach(c => {
+    const sc  = statusClass(c);
+    const bc  = battClass(c.battPct);
+    const pct = c.battPct;
+    const age = (Date.now() - c.ts) / 60_000;
+
+    if (sc !== 'off') active++;
+    if (c.flags & 0x01) fixCount++;
+    if (c.battPct <= 15) lowBat++;
+
+    const card = document.createElement('div');
+    card.className = 'collar-card' + (selectedId === c.id ? ' active' : '');
+    card.dataset.id = c.id;
+    card.innerHTML = `
+      <div class="row">
+        <div class="animal-icon" style="background:${sc === 'ok' ? '#1a2e4a' : sc === 'warn' ? '#2e2010' : '#1e1e24'}">${c.animal}</div>
+        <div>
+          <div class="name">${c.name}</div>
+          <div class="device-id">${hexId(c.id)}</div>
+        </div>
+        <div class="status-dot status-${sc}"></div>
+      </div>
+      <div class="metrics">
+        <div class="metric">
+          <div class="label">Battery</div>
+          <div class="value" style="color:${bc === 'ok' ? 'var(--accent2)' : bc === 'warn' ? 'var(--warn)' : 'var(--danger)'}">${pct}%</div>
+          <div class="battery-bar"><div class="fill fill-${bc}" style="width:${pct}%"></div></div>
+        </div>
+        <div class="metric">
+          <div class="label">Sats</div>
+          <div class="value">${c.satellites}</div>
+        </div>
+        <div class="metric">
+          <div class="label">Updated</div>
+          <div class="value" style="font-size:11px;color:${age > 30 ? 'var(--warn)' : 'inherit'}">${relTime(c.ts)}</div>
+        </div>
+      </div>
+    `;
+    card.addEventListener('click', () => selectCollar(c.id));
+    list.appendChild(card);
+  });
+
+  document.getElementById('collarCount').textContent = COLLARS.length;
+  document.getElementById('statActive').textContent  = active;
+  document.getElementById('statFix').textContent     = fixCount;
+  document.getElementById('statLowBat').textContent  = lowBat;
+  document.getElementById('statLowBat').style.color  = lowBat > 0 ? 'var(--danger)' : 'inherit';
+}
+
+// ── Select collar ────────────────────────────────────────────────────────────
+
+function selectCollar(id) {
+  selectedId = id;
+  const c = COLLARS.find(x => x.id === id);
+  if (!c) return;
+
+  renderSidebar();
+  map.flyTo([c.lat, c.lon], 13, { duration: 0.8 });
+  markerMap[id].openPopup();
+
+  // Info panel
+  const panel = document.getElementById('infoPanel');
+  const title = document.getElementById('infoPanelTitle');
+  const grid  = document.getElementById('infoPanelGrid');
+  panel.classList.add('visible');
+  title.innerHTML = `${c.animal} ${c.name} <span style="font-size:11px;color:var(--muted);font-weight:400">${hexId(c.id)}</span>`;
+
+  const fields = [
+    { lbl: 'Latitude',   val: formatCoord(c.lat, 'N', 'S') },
+    { lbl: 'Longitude',  val: formatCoord(c.lon, 'E', 'W') },
+    { lbl: 'Altitude',   val: `${c.altM} m` },
+    { lbl: 'HDOP',       val: c.hdop.toFixed(1) },
+    { lbl: 'Satellites', val: c.satellites },
+    { lbl: 'Battery',    val: `${c.battPct}% · ${c.battMv} mV` },
+    { lbl: 'Storage',    val: `${c.storageKb} KB used` },
+    { lbl: 'GNSS Fix',   val: (c.flags & 0x01) ? '✅ Valid' : '❌ None' },
+    { lbl: 'Radio TX',   val: (c.flags & 0x02) ? '✅ Sent'  : '—' },
+    { lbl: 'Last seen',  val: relTime(c.ts) },
+  ];
+
+  grid.innerHTML = fields.map(f =>
+    `<div class="field"><div class="lbl">${f.lbl}</div><div class="val">${f.val}</div></div>`
+  ).join('');
+}
+
+// ── Live clock ───────────────────────────────────────────────────────────────
+
+function tick() {
+  document.getElementById('lastUpdated').textContent =
+    'Updated ' + new Date().toLocaleTimeString();
+  renderSidebar();
+}
+
+renderSidebar();
+tick();
+setInterval(tick, 30_000);
+</script>
+</body>
+</html>
