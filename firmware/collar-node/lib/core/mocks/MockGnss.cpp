@@ -1,1 +1,2 @@
-// MockGnss.cpp - Placeholder GNSS mock implementation for unit tests.
+// MockGnss.cpp - Include mock implementation (class is header-only).
+#include "MockGnss.h"

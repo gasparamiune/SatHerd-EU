@@ -1,1 +1,2 @@
-// MockStorage.cpp - Placeholder storage mock implementation for unit tests.
+// MockStorage.cpp - Include mock implementation (class is header-only).
+#include "MockStorage.h"

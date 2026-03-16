@@ -206,3 +206,6 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 firmware/**/.pio
+
+# Firmware lib directories are source code, not Python virtualenv artifacts.
+!firmware/**/lib/

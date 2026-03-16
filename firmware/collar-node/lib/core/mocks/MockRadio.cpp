@@ -1,1 +1,2 @@
-// MockRadio.cpp - Placeholder radio mock implementation for unit tests.
+// MockRadio.cpp - Include mock implementation (class is header-only).
+#include "MockRadio.h"
